@@ -5,12 +5,14 @@ library(sandwich)
 library(clusterSEs)
 library(npregfast)
 library(extrafont)
+library(readxl)
+library(gridExtra)
 
 "%!in%" <- Negate("%in%")
 
-Election_State <- c("California", "New Jersey", "Virginia")
+Election_State <- c("New Jersey", "Virginia")
 
-df <- read_excel("Downloads/Utility Companies Elections.xlsx", 
+df <- read_excel("/Users/ziyuhe/Documents/GitHub/gubernatorial_election_option_pricing/dataset/Utility Companies Elections.xlsx", 
                  sheet = "Option Prices")
 
 df_wide <- df
@@ -37,29 +39,30 @@ rest <- df |>
 california <- df |> 
   filter(State == "California")
 
-ggplot(california) +
-  geom_point(aes(x = Day, y = IV)) +
-  geom_vline(xintercept = as.Date("2021-11-02")) +
-  geom_smooth(aes(x = Day, y = IV), data = california |> filter(Day <= as.Date("2021-11-02")), method = "lm", se = F) +
-  geom_smooth(aes(x = Day, y = IV), data = california |> filter(Day > as.Date("2021-11-02")), method = "lm", se = F)
+ggplot(df |> filter(Ticker == "AES")) +
+  geom_line(aes(x = Day, y = IV)) +
+  geom_vline(xintercept = as.Date("2021-11-02"), lty = 2, col = "red") +
+  geom_smooth(aes(x = Day, y = IV), data = df |> filter(Ticker == "AES") |> filter(Day <= as.Date("2021-11-02")), method = "lm", se = F) +
+  geom_smooth(aes(x = Day, y = IV), data = df |> filter(Ticker == "AES") |> filter(Day >= as.Date("2021-11-02")), method = "lm", se = F) +
+  labs(y = "Implied Volatility") +
+  theme_minimal() +
+  theme(text = element_text(family = "serif"),
+        title = element_text(size = 16),
+        axis.text = element_text(size = 14))
 
-ggplot(virginia) +
-  geom_point(aes(x = Day, y = IV)) +
-  geom_vline(xintercept = as.Date("2021-11-02")) +
-  geom_smooth(aes(x = Day, y = IV), data = virginia |> filter(Day <= as.Date("2021-11-02")), method = "lm", se = F) +
-  geom_smooth(aes(x = Day, y = IV), data = virginia |> filter(Day > as.Date("2021-11-03")), method = "lm", se = F)
+ggsave("../figures/AES.png")
 
-ggplot(rest) +
-  geom_point(aes(x = Day, y = IV)) +
-  geom_vline(xintercept = as.Date("2021-11-02")) +
-  geom_smooth(aes(x = Day, y = IV), data = rest |> filter(Day <= as.Date("2021-11-02")), method = "lm", se = F) +
-  geom_smooth(aes(x = Day, y = IV), data = rest |> filter(Day > as.Date("2021-11-02")), method = "lm", se = F)
-
-ggplot(df |> filter(Ticker == "CNP")) +
-  geom_point(aes(x = Day, y = IV)) +
-  geom_vline(xintercept = as.Date("2021-11-02")) +
-  geom_smooth(aes(x = Day, y = IV), data = df |> filter(Ticker == "CNP") |> filter(Day <= as.Date("2021-11-02")), method = "lm", se = F) +
-  geom_smooth(aes(x = Day, y = IV), data = df |> filter(Ticker == "CNP") |> filter(Day > as.Date("2021-11-02")), method = "lm", se = F)
+ggplot(df |> filter(Ticker == "XEL")) +
+  geom_line(aes(x = Day, y = IV)) +
+  geom_vline(xintercept = as.Date("2021-11-02"), lty = 2, col = "red") +
+  geom_smooth(aes(x = Day, y = IV), data = df |> filter(Ticker == "XEL") |> filter(Day <= as.Date("2021-11-02")), method = "lm", se = F) +
+  geom_smooth(aes(x = Day, y = IV), data = df |> filter(Ticker == "XEL") |> filter(Day >= as.Date("2021-11-02")), method = "lm", se = F) +
+  labs(y = "Implied Volatility") +
+  theme_minimal() +
+  theme(text = element_text(family = "serif"),
+        title = element_text(size = 16),
+        axis.text = element_text(size = 14))
+ggsave("../figures/XEL.png")
 
 company_lst <- unique(df$Ticker)
 for (i in 1:length(company_lst)) {
@@ -81,8 +84,7 @@ df_wide$twodayratio <- df_wide$twodaydiff / df_wide$before * 100
 names(df_wide) <- c("Ticker", "State", "Sector", "After2", "After1", 
                     "Before", "OnedayDiff", "TwodayDiff", "OnedayRatio", "TwodayRatio")
 
-df_wide$Election <- as.numeric(df_wide$State == "Virginia" | df_wide$State == "California" | df_wide$State == "New Jersey")
-df_wide$CloseElection <- as.numeric(df_wide$State == "Virginia")
+df_wide$Election <- as.numeric(df_wide$State == "Virginia" | df_wide$State == "New Jersey")
 
 
 
@@ -95,11 +97,11 @@ summary(lm(TwodayRatio ~ Election + Sector + State, data = df_wide))
 utility <- df_wide |> 
   filter(Sector == "Utilities")
 
-lm_util_onedaydiff <- lm(OnedayDiff ~ Election + CloseElection + State, data = utility)
-lm_util_twodaydiff <- lm(TwodayDiff ~ Election + CloseElection + State, data = utility)
+lm_util_onedaydiff <- lm(OnedayDiff ~ Election + State, data = utility)
+lm_util_twodaydiff <- lm(TwodayDiff ~ Election + State, data = utility)
 
-lm_util_onedayratio <- lm(OnedayRatio ~ Election + CloseElection + State, data = utility)
-lm_util_twodayratio <- lm(TwodayRatio ~ Election + CloseElection + State, data = utility)
+lm_util_onedayratio <- lm(OnedayRatio ~ Election + State, data = utility)
+lm_util_twodayratio <- lm(TwodayRatio ~ Election + State, data = utility)
 
 coeftest(lm_util_onedaydiff, vcovHC(lm_util_onedaydiff, type = 'HC0', cluster = 'Ticker'))
 coeftest(lm_util_twodaydiff, vcovHC(lm_util_twodaydiff, type = 'HC0', cluster = 'Ticker'))
@@ -108,16 +110,20 @@ coeftest(lm_util_twodayratio, vcovHC(lm_util_twodayratio, type = 'HC0', cluster 
 
 utility_large <- utility[sample(nrow(utility), 200, replace = T), ]
 
-lm_util_onedaydiff <- lm(OnedayDiff ~ Election + CloseElection + State, data = utility)
-lm_util_twodaydiff <- lm(TwodayDiff ~ Election + CloseElection + State, data = utility)
+lm_util_onedaydiff <- lm(OnedayDiff ~ Election + State, data = utility)
+lm_util_twodaydiff <- lm(TwodayDiff ~ Election + State, data = utility)
 coeftest(lm_util_onedaydiff, vcovHC(lm_util_onedaydiff, type = 'HC0', cluster = 'Ticker'))
 coeftest(lm_util_twodaydiff, vcovHC(lm_util_twodaydiff, type = 'HC0', cluster = 'Ticker'))
 
 utility_long <- df |> 
   filter(Sector == "Utilities")
 utility_long$Treat <- as.numeric(utility_long$State %in% Election_State & utility_long$Dayaway <= 0)
+#utility_long$Treat[utility_long$Dayaway == 1] = NA
+#utility_long <- utility_long |> 
+#  drop_na()
+utility_long$Treat_State <- as.numeric(utility_long$State %in% Election_State)
 
-utility_did <- lm(IV ~ Treat + Ticker + factor(Dayaway), data = utility_long)
+utility_did <- lm(IV ~ Treat + factor(Dayaway) + Ticker, data = utility_long)
 coeftest(utility_did, vcovHC(utility_did, type = 'HC0', cluster = 'Ticker'))
 
 fit0 <- frfast(IV ~ Dayaway, data = utility_long |> filter(State %!in% Election_State), 
@@ -149,21 +155,51 @@ dataplot1 <- cbind(dataplot1, pu, p, x)
 dataplot1$treatment = 1
 dataplot <- rbind(dataplot0, dataplot1)
 
-ggplot(utility_long) + 
-  geom_point(aes(x = Day, y = IV), data = utility_long |> filter(State %in% Election_State), color = "black", alpha = 0.3) +
-  geom_smooth(aes(x = Day, y = IV), data = utility_long |> filter(State %in% Election_State & Dayaway <= 0), method = "lm", se = F) +
-  geom_smooth(aes(x = Day, y = IV), data = utility_long |> filter(State %in% Election_State & Dayaway >= 0), method = "lm", se = F) +
-  geom_smooth(aes(x = Day, y = IV), data = utility_long |> filter(State %!in% Election_State & Dayaway <= 0), method = "lm", se = F, color = "red") +
-  geom_smooth(aes(x = Day, y = IV), data = utility_long |> filter(State %!in% Election_State & Dayaway >= 0), method = "lm", se = F, color = "red")
+RDD1 <- ggplot() + 
+  geom_smooth(aes(x = Day, y = IV, color = as.factor(Treat_State)), 
+              data = utility_long |> filter(State %in% Election_State & Dayaway <= 0), method = "loess", se = F) +
+  geom_smooth(aes(x = Day, y = IV, color = as.factor(Treat_State)), 
+              data = utility_long |> filter(State %in% Election_State & Dayaway >= 1), method = "loess", se = F) +
+  geom_smooth(aes(x = Day, y = IV, color = as.factor(Treat_State)), 
+              data = utility_long |> filter(State %!in% Election_State & Dayaway <= 0), method = "loess", se = F) +
+  geom_smooth(aes(x = Day, y = IV, color = as.factor(Treat_State)), 
+              data = utility_long |> filter(State %!in% Election_State & Dayaway >= 1), method = "loess", se = F) +
+  labs(y = "Implied Volatility") +
+  scale_color_discrete(name  = "Election", breaks=c("0", "1"), labels=c("No", "Yes")) +
+  theme_minimal()+
+  theme(text = element_text(family = "serif", size = 14),
+        title = element_text(size = 16),
+        legend.position = "bottom")
+
+RDD2 <- ggplot() + 
+  geom_smooth(aes(x = Day, y = IV, color = as.factor(Treat_State)), 
+              data = utility_long |> filter(State %in% Election_State & Dayaway <= 0), method = "loess", se = F) +
+  geom_smooth(aes(x = Day, y = IV, color = as.factor(Treat_State)), 
+              data = utility_long |> filter(State %in% Election_State & Dayaway > 1), method = "loess", se = F) +
+  geom_smooth(aes(x = Day, y = IV, color = as.factor(Treat_State)), 
+              data = utility_long |> filter(State %!in% Election_State & Dayaway <= 0), method = "loess", se = F) +
+  geom_smooth(aes(x = Day, y = IV, color = as.factor(Treat_State)), 
+              data = utility_long |> filter(State %!in% Election_State & Dayaway > 1), method = "loess", se = F) +
+  labs(y = "Implied Volatility") +
+  scale_color_discrete(name  = "Election", breaks=c("0", "1"), labels=c("No", "Yes")) +
+  theme_minimal()+
+  theme(text = element_text(family = "serif", size = 14),
+        title = element_text(size = 16),
+        legend.position = "bottom")
   
+g <- arrangeGrob(RDD1, RDD2, ncol = 2)
+ggsave("../figures/RDD.png", g)
+
 ggplot(dataplot, aes(x = x, y = p)) +
   geom_line(aes(y = p, color = as.factor(treatment))) +
-  geom_vline(aes(xintercept = 2)) + 
-  scale_color_discrete(name  ="Gubernatorial Election", breaks=c("0", "1"), labels=c("No Election", "Election")) +
+  geom_vline(aes(xintercept = 0), lty = 2) + 
+  scale_color_discrete(name  = "Gubernatorial Election", breaks=c("0", "1"), labels=c("No Election", "Election")) +
   theme_classic() + 
-  theme(legend.position="bottom",
+  theme(legend.position = "bottom",
         text = element_text(family = "serif")) +
-  labs(x = "Year", y = "State Taxes (% Income)", title = "(A)")
+  labs(x = "Days from Election", y = "Implied Volatility")
+
+ggsave("../figures/parallel.png")
 
 utility_long_treated <- utility_long |> 
   filter(State %in% Election_State)
@@ -179,3 +215,63 @@ utility_control_mean <- utility_long_control |>
   group_by(Dayaway) |> 
   summarise(avgiv = mean(predicted))
 
+virginia <- read_excel("Documents/GitHub/gubernatorial_election_option_pricing/dataset/Gubernatorial2021.xlsx", 
+                       sheet = "Virginia")
+newjersey <- read_excel("Documents/GitHub/gubernatorial_election_option_pricing/dataset/Gubernatorial2021.xlsx", 
+                       sheet = "New Jersey")
+
+VA_poll <- NJ_poll <- data.frame(matrix(ncol = 2, nrow = 16))
+names(VA_poll) <- names(NJ_poll) <- c("Day", "Uncertainty")
+VA_poll$Day <- NJ_poll$Day <- as.Date(unique(df$Day))
+VA_poll <- VA_poll[1:9, ]
+NJ_poll <- NJ_poll[1:9, ]
+
+virginia$Date <- as.Date(virginia$Date)
+newjersey$Date <- as.Date(newjersey$Date)
+virginia$McAuliffe <- virginia$McAuliffe / virginia$Total * 100
+virginia$Youngkin <- virginia$Youngkin / virginia$Total * 100
+newjersey$Murphy <- newjersey$Murphy / newjersey$Total * 100
+newjersey$Ciattarelli <- newjersey$Ciattarelli / newjersey$Total * 100
+for (i in 1:9) {
+  df_VA <- virginia |> 
+    filter(Date <= VA_poll$Day[i])
+  VA_mean <- mean(df_VA$McAuliffe)
+  VA_sd <- sd(df_VA$McAuliffe)
+  VA_poll$Uncertainty[i] <- min(dnorm(50, VA_mean, VA_sd), 1 - dnorm(50, VA_mean, VA_sd))
+  
+  df_NJ <- newjersey |> 
+    filter(Date <= NJ_poll$Day[i])
+  NJ_mean <- mean(df_NJ$Murphy)
+  NJ_sd <- sd(df_NJ$Murphy)
+  NJ_poll$Uncertainty[i] <- min(dnorm(50, NJ_mean, NJ_sd), 1 - dnorm(50, NJ_mean, NJ_sd))
+}
+
+utility_long$Treat_cont <- 0
+utility_long$Treat_cont[utility_long$State == "Virginia" & utility_long$Treat == 1] = VA_poll$Uncertainty
+utility_long$Treat_cont[utility_long$State == "New Jersey" & utility_long$Treat == 1] = NJ_poll$Uncertainty
+
+utility_did_cont <- lm(IV ~ Treat_cont + factor(Dayaway) + Ticker, data = utility_long)
+coeftest(utility_did_cont, vcovHC(utility_did_cont, type = 'HC0', cluster = 'Ticker'))
+
+utility$Treat_cont <- 0
+utility$Treat_cont[utility$State == "Virginia" & utility$Election == 1] = VA_poll$Uncertainty[nrow(VA_poll)]
+utility$Treat_cont[utility$State == "New Jersey" & utility$Election == 1] = NJ_poll$Uncertainty[nrow(NJ_poll)]
+
+lm_util_onedaydiff_cont <- lm(OnedayDiff ~ Treat_cont + State, data = utility)
+lm_util_twodaydiff_cont <- lm(TwodayDiff ~ Treat_cont + State, data = utility)
+coeftest(lm_util_onedaydiff_cont, vcovHC(lm_util_onedaydiff_cont, type = 'HC0', cluster = 'Ticker'))
+coeftest(lm_util_onedaydiff_cont, vcovHC(lm_util_onedaydiff_cont, type = 'HC0', cluster = 'Ticker'))
+
+utility_pred <- cbind(utility_treat_mean, utility_control_mean)[, c(1, 2, 4)]
+names(utility_pred) <- c("Dayaway", "Treated", "Control")
+ggplot(utility_pred) +
+  geom_line(aes(x = Dayaway, y = Treated, col = "Yes")) +
+  geom_line(aes(x = Dayaway, y = Control, col = "No")) +
+  geom_vline(aes(xintercept = 0), lty = 2) +
+  scale_color_manual(values = c("Yes" = "red", "No" = "blue")) +
+  labs(x = "Days from Election", y = "Predicted Implied Volatility", colour = "Election") +
+  theme_minimal()+
+  theme(text = element_text(family = "serif", size = 14),
+        title = element_text(size = 16),
+        legend.position = "bottom")
+ggsave("../figures/predicted_IV.png")
