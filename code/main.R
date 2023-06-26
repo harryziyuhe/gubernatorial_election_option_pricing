@@ -7,6 +7,7 @@ library(npregfast)
 library(extrafont)
 library(readxl)
 library(gridExtra)
+library(stargazer)
 
 "%!in%" <- Negate("%in%")
 
@@ -97,7 +98,7 @@ summary(lm(TwodayRatio ~ Election + Sector + State, data = df_wide))
 utility <- df_wide |> 
   filter(Sector == "Utilities")
 
-lm_util_onedaydiff <- lm(OnedayDiff ~ Election + State, data = utility)
+lm_util_onedaydiff <- lm(OnedayDiff/100 ~ Election + State, data = utility)
 lm_util_twodaydiff <- lm(TwodayDiff ~ Election + State, data = utility)
 
 lm_util_onedayratio <- lm(OnedayRatio ~ Election + State, data = utility)
@@ -215,9 +216,9 @@ utility_control_mean <- utility_long_control |>
   group_by(Dayaway) |> 
   summarise(avgiv = mean(predicted))
 
-virginia <- read_excel("Documents/GitHub/gubernatorial_election_option_pricing/dataset/Gubernatorial2021.xlsx", 
+virginia <- read_excel("/Users/ziyuhe/Documents/GitHub/gubernatorial_election_option_pricing/dataset/Gubernatorial2021.xlsx", 
                        sheet = "Virginia")
-newjersey <- read_excel("Documents/GitHub/gubernatorial_election_option_pricing/dataset/Gubernatorial2021.xlsx", 
+newjersey <- read_excel("/Users/ziyuhe/Documents/GitHub/gubernatorial_election_option_pricing/dataset/Gubernatorial2021.xlsx", 
                        sheet = "New Jersey")
 
 VA_poll <- NJ_poll <- data.frame(matrix(ncol = 2, nrow = 16))
@@ -260,7 +261,7 @@ utility$Treat_cont[utility$State == "New Jersey" & utility$Election == 1] = NJ_p
 lm_util_onedaydiff_cont <- lm(OnedayDiff ~ Treat_cont + State, data = utility)
 lm_util_twodaydiff_cont <- lm(TwodayDiff ~ Treat_cont + State, data = utility)
 coeftest(lm_util_onedaydiff_cont, vcovHC(lm_util_onedaydiff_cont, type = 'HC0', cluster = 'Ticker'))
-coeftest(lm_util_onedaydiff_cont, vcovHC(lm_util_onedaydiff_cont, type = 'HC0', cluster = 'Ticker'))
+coeftest(lm_util_twodaydiff_cont, vcovHC(lm_util_twodaydiff_cont, type = 'HC0', cluster = 'Ticker'))
 
 utility_pred <- cbind(utility_treat_mean, utility_control_mean)[, c(1, 2, 4)]
 names(utility_pred) <- c("Dayaway", "Treated", "Control")
@@ -275,3 +276,27 @@ ggplot(utility_pred) +
         title = element_text(size = 16),
         legend.position = "bottom")
 ggsave("../figures/predicted_IV.png")
+
+
+stargazer(lm_util_onedaydiff, lm_util_twodaydiff, lm_util_onedaydiff_cont, lm_util_twodaydiff_cont,
+          type = "latex", header = F,
+          keep = c("Election","Treat"),
+          title = "RDD Model",
+          column.separate = c(2, 2),
+          column.labels = c("Binary", "Continuous"),
+          omit.stat = c("f", "ser", "adj.rsq"), omit = c("Constant"), 
+          add.lines = list(c("State FE", "Yes", "Yes", "Yes", "Yes", "Yes"),
+                           c("Number of Firms","29", "29", "29", "29", "29")),
+          table.placement = "H")
+
+stargazer(utility_did, utility_did_cont,
+          type = "latex", header = F,
+          keep = "Treat",
+          title = "TWFE",
+          column.separate = c(1, 1),
+          column.labels = c("Binary", "Continuous"),
+          omit.stat = c("f", "ser", "adj.rsq"), omit = c("Constant"), 
+          add.lines = list(c("Time FE", "Yes", "Yes", "Yes", "Yes", "Yes"),
+                           c("State FE", "Yes", "Yes", "Yes", "Yes", "Yes"),
+                           c("Number of Firms","29", "29", "29", "29", "29")),
+          table.placement = "H")
