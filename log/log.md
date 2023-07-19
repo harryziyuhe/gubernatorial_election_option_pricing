@@ -21,3 +21,8 @@ Hassan et al 2017 uses conference call transcripts to measure political risk/unc
 
 ## Asset Pricing Measurement:
 Smith and So (2022) talks about disaggregating risk information and determistic drop equal to risk-neutral expected return variance from the change in implied volatility surrounding the date of the event. This is also useful in the gubernatorial elections context. Following Smith and So (2022)'s set up, the drop in implied volatility reflects both the reveal of risk information and expected event-date variance. In this model, if there is no risk information, then the drop in implied volatility should be the same as the initial climb leading up to the event date. This creates a short-term effect and the long-term effect that are both worthy of exploring. The short-term effect (the magnitude of the expected event-date variance) reflects how uncertain investors think the election is, and the long-term effect (the risk information component) reflects investors' believes of future economic/political conditions. Thus the short-term effect should only be driven by the competitiveness of the race while the long-term effect should incorporate information of the actual outcome (whether the incumbent won, whether there is a party shift, etc.)
+
+# 2023/07/18 Harry Thoughts
+
+## Utility Companies and Case Selections
+Because utility companies use more leverage than companies in other sectors, they are potentially more sensitive to interest rate risks, this creates a great opportunity to compare option price changes/jumps resulting from political events and Fed rate hikes. We can use the effects of the latter to examine the magnitude of the effects of the former. 
