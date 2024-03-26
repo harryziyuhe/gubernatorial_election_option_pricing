@@ -1,0 +1,151 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(haven)
+library(readxl)
+library(tidyverse)
+library(lmtest)
+library(sandwich)
+library(stargazer)
+library(knitr)
+library(kableExtra)
+```
+
+```{r}
+varlst <- c("tight", "margin1", "margin2", "tight_c", "margin1_c", "margin2_c", "closeness", "margin", "uncertain")
+varname <- c("0% Margin (All)", "1% Margin (All)", "2% Margin (All)", "0% Margin (Last)",
+             "1% Margin (Last)", "2% Margin (Last)", "Negative Exponents", "Multiplicative Inverse", "Analysts Predictions")
+```
+
+### 2020
+```{r}
+setwd("/Users/ziyuhe/Library/CloudStorage/OneDrive-UCSanDiego/Data/Financial Data/Gubernatorial Elections")
+poluncertain2020 <- read_csv("2020/polluncertain.csv") |> 
+  dplyr::select(varlst)
+names(poluncertain2020) <- varname
+
+```
+```{r}
+corr_matrix <- cor(poluncertain2020, method = "pearson")
+corr_melted <- reshape2::melt(corr_matrix)
+corr_melted$Var1 <- factor(corr_melted$Var1, levels = colnames(poluncertain2020))
+corr_melted$Var2 <- factor(corr_melted$Var2, levels = colnames(poluncertain2020))
+
+# Filter out the upper half and diagonal
+corr_melted_filtered <- corr_melted %>%
+  filter(as.numeric(Var1) < as.numeric(Var2))
+
+ggplot(corr_melted_filtered, aes(x = Var2, y = Var1, fill = value)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(value, 2)), color = "white", size = 3) + # Add the correlation values as text
+  scale_fill_gradient(low = "lightblue", high = "darkblue", 
+                      limits = c(0.7, 1), name = "Correlation") +
+  theme_minimal() +
+  theme(text = element_text(family = 'serif'),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, color = "black"),
+        axis.text.y = element_text(color = "black"),
+        axis.title = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(title = "Pearson Correlation Matrix") +
+  coord_fixed()
+
+ggsave("/Users/ziyuhe/Library/CloudStorage/OneDrive-UCSanDiego/Data/Financial Data/Gubernatorial Elections/2020pearson.png", dpi = 600)
+```
+```{r}
+corr_matrix <- cor(poluncertain2020, method = "spearman")
+corr_melted <- reshape2::melt(corr_matrix)
+corr_melted$Var1 <- factor(corr_melted$Var1, levels = colnames(poluncertain2020))
+corr_melted$Var2 <- factor(corr_melted$Var2, levels = colnames(poluncertain2020))
+
+# Filter out the upper half and diagonal
+corr_melted_filtered <- corr_melted %>%
+  filter(as.numeric(Var1) < as.numeric(Var2))
+
+ggplot(corr_melted_filtered, aes(x = Var2, y = Var1, fill = value)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(value, 2)), color = "white", size = 3) + # Add the correlation values as text
+  scale_fill_gradient(low = "lightblue", high = "darkblue", 
+                      limits = c(0.4, 1), name = "Correlation") +
+  theme_minimal() +
+  theme(text = element_text(family = 'serif'),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, color = "black"),
+        axis.text.y = element_text(color = "black"),
+        axis.title = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(title = "Spearman's Rank Correlation Matrix") +
+  coord_fixed()
+
+ggsave("/Users/ziyuhe/Library/CloudStorage/OneDrive-UCSanDiego/Data/Financial Data/Gubernatorial Elections/2020spearman.png", dpi = 600)
+```
+
+### 2022
+```{r}
+setwd("/Users/ziyuhe/Library/CloudStorage/OneDrive-UCSanDiego/Data/Financial Data/Gubernatorial Elections")
+poluncertain2022 <- read_csv("2022/polluncertain.csv") |> 
+  dplyr::select(varlst)
+names(poluncertain2022) <- varname
+
+```
+```{r}
+corr_matrix <- cor(poluncertain2022, method = "pearson")
+corr_melted <- reshape2::melt(corr_matrix)
+corr_melted$Var1 <- factor(corr_melted$Var1, levels = colnames(poluncertain2022))
+corr_melted$Var2 <- factor(corr_melted$Var2, levels = colnames(poluncertain2022))
+
+# Filter out the upper half and diagonal
+corr_melted_filtered <- corr_melted %>%
+  filter(as.numeric(Var1) < as.numeric(Var2))
+
+ggplot(corr_melted_filtered, aes(x = Var2, y = Var1, fill = value)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(value, 2)), color = "white", size = 3) + # Add the correlation values as text
+  scale_fill_gradient(low = "lightblue", high = "darkblue", 
+                      limits = c(0.3, 1), name = "Correlation") +
+  theme_minimal() +
+  theme(text = element_text(family = 'serif'),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, color = "black"),
+        axis.text.y = element_text(color = "black"),
+        axis.title = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(title = "Pearson Correlation Matrix") +
+  coord_fixed()
+
+ggsave("/Users/ziyuhe/Library/CloudStorage/OneDrive-UCSanDiego/Data/Financial Data/Gubernatorial Elections/2022pearson.png", dpi = 600)
+```
+```{r}
+corr_matrix <- cor(poluncertain2022, method = "spearman")
+corr_melted <- reshape2::melt(corr_matrix)
+corr_melted$Var1 <- factor(corr_melted$Var1, levels = colnames(poluncertain2022))
+corr_melted$Var2 <- factor(corr_melted$Var2, levels = colnames(poluncertain2022))
+
+# Filter out the upper half and diagonal
+corr_melted_filtered <- corr_melted %>%
+  filter(as.numeric(Var1) < as.numeric(Var2))
+
+ggplot(corr_melted_filtered, aes(x = Var2, y = Var1, fill = value)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(value, 2)), color = "white", size = 3) + # Add the correlation values as text
+  scale_fill_gradient(low = "lightblue", high = "darkblue", 
+                      limits = c(0.5, 1), name = "Correlation") +
+  theme_minimal() +
+  theme(text = element_text(family = 'serif'),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, color = "black"),
+        axis.text.y = element_text(color = "black"),
+        axis.title = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(title = "Spearman's Rank Correlation Matrix") +
+  coord_fixed()
+
+ggsave("/Users/ziyuhe/Library/CloudStorage/OneDrive-UCSanDiego/Data/Financial Data/Gubernatorial Elections/2022spearman.png", dpi = 600)
+```
