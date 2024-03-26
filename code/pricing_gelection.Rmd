@@ -1,0 +1,488 @@
+---
+title: "Pricing Gubernatorial Elections"
+output: html_notebook
+---
+
+```{r}
+library(haven)
+library(readxl)
+library(tidyverse)
+library(lmtest)
+library(sandwich)
+library(stargazer)
+library(knitr)
+library(kableExtra)
+```
+```{r}
+meta_mean <- function(results, moe){
+  std <- moe / 1.96
+  weights <- 1 / (std^2)
+  return(sum(results * weights) / sum(weights))
+}
+
+meta_std <- function(moe){
+  std <- moe / 1.96
+  weights <- 1 / (std^2)
+  return(sqrt(1/sum(weights)))
+}
+
+bsiv <- function(iv10, iv30, iv60){
+  iv_term_bs <- numeric(length(iv10))
+  for(i in 1:length(iv10)){
+    if(iv10[i] > iv30[i]) {
+      iv_term_bs[i] <- ((iv10[i]^2/252)-(iv30[i]^2/252))/(1/10 - 1/30)
+    } else if(iv30[i] > iv60[i]) {
+      iv_term_bs[i] <- ((iv30[i]^2/252)-(iv60[i]^2/252))/(1/30 - 1/60)
+    } else {
+      iv_term_bs[i] <- NA
+    }
+  }
+  return(iv_term_bs)
+}
+```
+
+Globals
+```{r}
+state_codes <- c(
+  "Alabama" = "AL",
+  "Alaska" = "AK",
+  "Arizona" = "AZ",
+  "Arkansas" = "AR",
+  "California" = "CA",
+  "Colorado" = "CO",
+  "Connecticut" = "CT",
+  "District of Columbia" = "DC",
+  "Delaware" = "DE",
+  "Florida" = "FL",
+  "Georgia" = "GA",
+  "Hawaii" = "HI",
+  "Idaho" = "ID",
+  "Illinois" = "IL",
+  "Indiana" = "IN",
+  "Iowa" = "IA",
+  "Kansas" = "KS",
+  "Kentucky" = "KY",
+  "Louisiana" = "LA",
+  "Maine" = "ME",
+  "Maryland" = "MD",
+  "Massachusetts" = "MA",
+  "Michigan" = "MI",
+  "Minnesota" = "MN",
+  "Mississippi" = "MS",
+  "Missouri" = "MO",
+  "Montana" = "MT",
+  "Nebraska" = "NE",
+  "Nevada" = "NV",
+  "New Hampshire" = "NH",
+  "New Jersey" = "NJ",
+  "New Mexico" = "NM",
+  "New York" = "NY",
+  "North Carolina" = "NC",
+  "North Dakota" = "ND",
+  "Ohio" = "OH",
+  "Oklahoma" = "OK",
+  "Oregon" = "OR",
+  "Pennsylvania" = "PA",
+  "Rhode Island" = "RI",
+  "South Carolina" = "SC",
+  "South Dakota" = "SD",
+  "Tennessee" = "TN",
+  "Texas" = "TX",
+  "Utah" = "UT",
+  "Vermont" = "VT",
+  "Virginia" = "VA",
+  "Washington" = "WA",
+  "West Virginia" = "WV",
+  "Wisconsin" = "WI",
+  "Wyoming" = "WY"
+)
+```
+
+Functions
+```{r}
+calculate_implvol <- function(df_options, year, subsample) {
+  implvol <- df_options |> 
+    mutate(vol_30_0 = `30_0`,
+           vol_30_1 = `30_1`,
+           vol_60_0 = `60_0`,
+           vol_60_1 = `60_1`,
+           sigma_term_m = (`30_0`^2/252 - `60_0`^2/252) / (1/30-1/60) - (`30_1`^2/252 - `60_1`^2/252) / (1/30-1/60),
+           sigma_term_bs = (((`30_0`/sqrt(252))^2)-((`60_0`/sqrt(252))^2))/(1/30 - 1/60),
+           sigma_term_bs1 = (((`30_1`/sqrt(252))^2)-((`60_1`/sqrt(252))^2))/(1/30 - 1/60),
+           baseline0 = vol_30_0^2/252 - sigma_term_bs/30,
+           baseline1 = vol_30_1^2/252 - sigma_term_bs1/30,
+           s_sigma_term_bs0 = sigma_term_bs / baseline0,
+           s_sigma_term_bs1 = sigma_term_bs1 / baseline1,
+           sigma_time_10 = (10 * (`10_0`^2/252 - `10_1`^2/252)),
+           sigma_time_30 = (30 * (`30_0`^2/252 - `30_1`^2/252)),
+           sigma_time_60 = (60 * (`60_0`^2/252 - `60_1`^2/252)),
+           sigma_time_91 = (91 * (`91_0`^2/252 - `91_1`^2/252)),
+           sigma_time_122 = (122 * (`122_0`^2/252 - `122_1`^2/252)),
+           sigma_time_152 = (152 * (`152_0`^2/252 - `152_1`^2/252)),
+           sigma_time_182 = (182 * (`182_0`^2/252 - `182_1`^2/252)),
+           sigma_time_273 = (273 * (`273_0`^2/252 - `273_1`^2/252)),
+           sigma_time_365 = (365 * (`365_0`^2/252 - `365_1`^2/252)),
+           sigma_time_547 = (547 * (`547_0`^2/252 - `547_1`^2/252)),
+           sigma_time_730 = (730 * (`730_0`^2/252 - `730_1`^2/252)),
+           RI10_m = (-sigma_time_10 + sigma_term_m)/10,
+           RI30_m = (-sigma_time_30 + sigma_term_m)/30,
+           RI60_m = (-sigma_time_60 + sigma_term_m)/60,
+           RI91_m = (-sigma_time_91 + sigma_term_m)/91,
+           RI122_m = (-sigma_time_122 + sigma_term_m)/122,
+           RI152_m = (-sigma_time_152 + sigma_term_m)/152,
+           RI182_m = (-sigma_time_182 + sigma_term_m)/182,
+           RI273_m = (-sigma_time_273 + sigma_term_m)/273,
+           RI365_m = (-sigma_time_365 + sigma_term_m)/365,
+           RI547_m = (-sigma_time_547 + sigma_term_m)/547,
+           RI730_m = (-sigma_time_730 + sigma_term_m)/730,
+           RI10_bs = (-sigma_time_10 + sigma_term_bs)/10,
+           RI30_bs = (-sigma_time_30 + sigma_term_bs)/30,
+           RI60_bs = (-sigma_time_60 + sigma_term_bs)/60,
+           RI91_bs = (-sigma_time_91 + sigma_term_bs)/91,
+           RI122_bs = (-sigma_time_122 + sigma_term_bs)/122,
+           RI152_bs = (-sigma_time_152 + sigma_term_bs)/152,
+           RI182_bs = (-sigma_time_182 + sigma_term_bs)/182,
+           RI273_bs = (-sigma_time_273 + sigma_term_bs)/273,
+           RI365_bs = (-sigma_time_365 + sigma_term_bs)/365,
+           RI547_bs = (-sigma_time_547 + sigma_term_bs)/547,
+           RI730_bs = (-sigma_time_730 + sigma_term_bs)/730)
+  implvol <- implvol[, -2:-23]
+  return(implvol)
+}
+
+calculate_uncertainty <- function(df_poll){
+  pol_uncertain <- df_poll |> 
+    group_by(state) %>%
+    summarize(
+      dem_mean = meta_mean(pdem, MOE) * 100,
+      rep_mean = meta_mean(prep, MOE) * 100,
+      first_dem = first(pdem) * 100,
+      first_rep = first(prep) * 100,
+      std = meta_std(MOE) * 100,
+      std_c = first(MOE) /1.96 * 100
+    )
+  pol_uncertain$uncertain <-  uncertainlst
+  pol_uncertain$dem_win <- demwinlst
+  pol_uncertain$inc_win <- inclst
+  pol_uncertain$incparty_win <- incpartylst
+  pol_uncertain <- pol_uncertain |> 
+    mutate(
+      surprise = ifelse(dem_mean > 50, -0.5, 0.5) * dem_win + 0.5,
+      min_mean = pmin(dem_mean, rep_mean),
+      min_first = pmin(first_dem, first_rep),
+      tight = 1 - pnorm(50, mean = min_mean, sd = std),
+      margin1 = 1 - pnorm(49.5, mean = min_mean, sd = std),
+      margin2 = 1 - pnorm(49, mean = min_mean, sd = std),
+      tight_c = 1 - pnorm(50, mean = min_first, sd = std_c),
+      margin1_c = 1 - pnorm(49.5, mean = min_first, sd = std_c),
+      margin2_c = 1 - pnorm(49, mean = min_first, sd = std_c),
+      margin2_p = ifelse(min_mean > 49, 1, 0),
+      closeness = exp(-(50 - min_mean) * 2),
+      margin = 1 / abs(dem_mean - rep_mean),
+      dem = as.numeric(dem_win > 0),
+      inc = as.numeric(inc_win > 0),
+      incparty = as.numeric(incparty_win > 0)
+    )
+  write.csv(pol_uncertain, "/Users/ziyuhe/Library/CloudStorage/OneDrive-UCSanDiego/Data/Financial Data/Gubernatorial Elections/polluncertain.csv")
+
+  pol_uncertain <- pol_uncertain |> 
+    mutate(emovet_party = ifelse(surprise == 0, tight * dem_win, (2 - tight) * dem_win),
+           emove1_party = ifelse(surprise == 0, margin1 * dem_win, (2 - margin1) * dem_win),
+           emove2_party = ifelse(surprise == 0, margin2 * dem_win, (2 - margin2) * dem_win),
+           emovet_c_party = ifelse(surprise == 0, tight_c * dem_win, (2 - tight_c) * dem_win),
+           emove1_c_party = ifelse(surprise == 0, margin1_c * dem_win, (2 - margin1_c) * dem_win),
+           emove2_c_party = ifelse(surprise == 0, margin2_c * dem_win, (2 - margin2_c) * dem_win),
+           emove2_p_party = ifelse(surprise == 0, margin2_p * dem_win, (2 - margin2_p) * dem_win),
+           emoveclose_party = ifelse(surprise == 0, closeness * dem_win, (2 - closeness) * dem_win),
+           emoveuncertain_party = uncertain * dem_win,
+           emovet_inc = ifelse(surprise == 0, tight * inc_win, (2 - tight) * inc_win),
+           emove1_inc = ifelse(surprise == 0, margin1 * inc_win, (2 - margin1) * inc_win),
+           emove2_inc = ifelse(surprise == 0, margin2 * inc_win, (2 - margin2) * inc_win),
+           emovet_c_inc = ifelse(surprise == 0, tight_c * inc_win, (2 - tight_c) * inc_win),
+           emove1_c_inc = ifelse(surprise == 0, margin1_c * inc_win, (2 - margin1_c) * inc_win),
+           emove2_c_inc = ifelse(surprise == 0, margin2_c * inc_win, (2 - margin2_c) * inc_win),
+           emove2_p_inc = ifelse(surprise == 0, margin2_p * inc_win, (2 - margin2_p) * inc_win),
+           emoveclose_inc = ifelse(surprise == 0, closeness * inc_win, (2 - closeness) * inc_win),
+           emoveuncertain_inc = uncertain * inc_win,
+           emovet_incparty = ifelse(surprise == 0, tight * incparty_win, (2 - tight) * incparty_win),
+           emove1_incparty = ifelse(surprise == 0, margin1 * incparty_win, (2 - margin1) * incparty_win),
+           emove2_incparty = ifelse(surprise == 0, margin2 * incparty_win, (2 - margin2) * incparty_win),
+           emovet_c_incparty = ifelse(surprise == 0, tight_c * incparty_win, (2 - tight_c) * incparty_win),
+           emove1_c_incparty = ifelse(surprise == 0, margin1_c * incparty_win, (2 - margin1_c) * incparty_win),
+           emove2_c_incparty = ifelse(surprise == 0, margin2_c * incparty_win, (2 - margin2_c) * incparty_win),
+           emove2_p_incparty = ifelse(surprise == 0, margin2_p * incparty_win, (2 - margin2_p) * incparty_win),
+           emoveclose_incparty = ifelse(surprise == 0, closeness * incparty_win, (2 - closeness) * incparty_win),
+           emoveuncertain_incparty = uncertain * incparty_win,)
+  return(pol_uncertain)
+}
+
+calculate_gdp <- function(df_gdp, year) {
+  column_name <- paste0(year, ":Q3")
+  gdp <- df_gdp |> 
+    filter(Description == 'All industry total') |> 
+    mutate(state = state_codes[GeoName]) |> 
+    drop_na() |> 
+    select(state, .data[[column_name]])
+  names(gdp) <- c("state", "gdp")
+  gdp$gdp <- as.numeric(gdp$gdp)
+  return(gdp)
+}
+
+calculate_unemploy <- function(df_unemploy, year) {
+  unemploy <- df_unemploy |> 
+    select(State, Label, Value) |> 
+    filter(Label %in% c(paste0(year, " Aug"), paste0( year, " Sep"), paste0(year, " Oct"))) |> 
+    pivot_wider(names_from = Label, values_from = Value)
+  names(unemploy) <- c("state", "unemploy_aug", "unemploy_sep", "unemploy_oct")
+  return(unemploy)
+}
+
+risk_information <- function(year, subsample) {
+  company_info <- read_dta("risk_info_merged.dta")
+  df_options <- read_csv(paste0(year, "/", subsample, "_options_w.csv"))
+  if (subsample == "full") {
+    df_options <- df_options[-1, ]
+  }
+  df_poll <- read_csv(paste0(year, "/gubernatorial_poll.csv"))
+  df_unemploy <- read_csv("Econ_unemploy.csv")
+  df_gdp <- read_csv("Econ_GDP.csv")
+  
+  implvol <- calculate_implvol(df_options, year, subsample)
+  uncertain <- calculate_uncertainty(df_poll)
+  election_state <- unique(uncertain$state)
+  gdp <- calculate_gdp(df_gdp, year)
+  unemploy <- calculate_unemploy(df_unemploy, year)
+
+  riskinfo <- company_info |> 
+    select(ticker, secid, gvkey, cusip, addzip, gind, gsector, gsubind, 
+           state, spcsrc, foreign, no_dur, durables, manuf, energy, chemical,
+           bus_eq, telco, utilities, shops, health, finance, fama) |> 
+    filter(foreign == 0) |> 
+    right_join(implvol, by = 'ticker') |> 
+    mutate(spcsrc = relevel(factor(spcsrc), ref = "B"),
+           gelection = as.numeric(state %in% election_state),
+           sector = relevel(factor(gsector), ref = "25")) |> 
+    left_join(uncertain, by = "state") |>
+    dplyr::select(-c(no_dur, durables, manuf, energy, chemical,
+                     bus_eq, telco, utilities, shops, health,
+                     finance, fama, foreign)) |> 
+    left_join(unemploy, by = "state") |> 
+    left_join(gdp, by = "state") |> 
+    filter(state %in% state_codes) |> 
+    mutate_at(c("tight", "margin1", "margin2",
+                "tight_c", "margin1_c", "margin2_c", "uncertain",
+                "dem_win", "inc_win", "incparty_win", "emovet_party", 
+                "emove1_party", "emove2_party", "emovet_c_party", 
+                "emove1_c_party", "emove2_c_party", "emove2_p_party", 
+                "emoveclose_party", "emoveuncertain_party",
+                "emovet_inc", "emove1_inc", "emove2_inc", "emovet_c_inc",
+                "emove1_c_inc", "emove2_c_inc", "emove2_p_inc", "emoveclose_inc",
+                "emoveuncertain_inc",
+                "emovet_incparty", "emove1_incparty", "emove2_incparty", 
+                "emovet_c_incparty", "emove1_c_incparty", "emove2_c_incparty",
+                "emove2_p_incparty", "emoveclose_incparty", "emoveuncertain_incparty",
+                "dem", "inc", "incparty", "surprise", "margin", "closeness"),
+               ~ifelse(is.na(.), 0, .))
+  write.csv(riskinfo, paste0(year, "/", subsample, "_riskinfo_merged.csv"))
+  return(riskinfo)
+}
+```
+
+```{r}
+setwd("/Users/ziyuhe/Library/CloudStorage/OneDrive-UCSanDiego/Data/Financial Data/Gubernatorial Elections")
+uncertainlst <- c(0, 1/6, 11/6, 15/6, 8/6, 0, 4/6, 0, 1/6, 0, 3/6)
+demwinlst <- c(1, -1, -1, -1, 1, -1, -1, -1, -1, 1, -1)
+inclst <- c(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+incpartylst <- c(0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0)
+surprise <- c(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+riskinfo_2020 <- risk_information("2020", "full")
+```
+
+```{r}
+setwd("/Users/ziyuhe/Library/CloudStorage/OneDrive-UCSanDiego/Data/Financial Data/Gubernatorial Elections")
+uncertainlst <- c(1, 0, 0, 21/8, 0, 3/8, 6/8, 0, 6/8, 13/8,
+                  0, 1/8, 0, 3/8, 21/8, 1/8, 1/8, 16/8, 17/8, 13/8, 
+                  0, 1/8, 18/8, 21/8, 9/8, 2/8, 10/8, 21/8, 9/8, 5/8, 
+                  0, 2/8, 0, 7/8, 0, 22/8, 0)
+demwinlst <- c(-1, -1, -1, 1, 1, 1, 1, 1, -1, -1, 
+               1, -1, -1, 1, 1, 1, 1, 1, 1, 1, 
+               -1, -1, 1, -1, 1, -1, -1, 1, 1, 1,
+               -1, -1, -1, -1, -1, 1, -1)
+inclst <- c(-1, -1, 1, 1, -1, -1, -1, -1, -1, -1,
+            1, -1, -1, -1, -1, 1, 1, -1, -1, -1,
+            1, -1, -1, 1, -1, -1, -1, 1, 1, -1,
+            -1, -1, -1, -1, -1, -1, -1)
+incpartylst <- c(-1, -1, -1, 1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, -1, -1, -1, 1, 1, -1, -1, -1,
+                 -1, -1, -1, 1, -1, -1, -1, -1, -1, -1,
+                 -1, -1, -1, -1, -1, -1, -1)
+surprise <- c()
+riskinfo_2022 <- risk_information("2022", "full")
+
+```
+
+```{r}
+riskinfo_2020$year = 2020
+riskinfo_2022$year = 2022
+riskinfo <- riskinfo_2020 |> 
+  rbind(riskinfo_2022)
+```
+
+```{r}
+riskinfo_20220 <- riskinfo_2022 |>
+  dplyr::select(-c(sigma_term_bs1, baseline1, s_sigma_term_bs1)) |> 
+  rename(baseline = baseline0,
+         s_sigma_term_bs = s_sigma_term_bs0) |> 
+  mutate(time = 1)
+riskinfo_20221 <- riskinfo_2022 |> 
+  dplyr::select(-c(sigma_term_bs, baseline0, s_sigma_term_bs0)) |> 
+  rename(sigma_term_bs = sigma_term_bs1,
+         baseline = baseline1,
+         s_sigma_term_bs = s_sigma_term_bs1) |> 
+  mutate(time = 0)
+riskinfo_2022_did <- rbind(riskinfo_20220, riskinfo_20221)
+riskinfo_2022_did <- riskinfo_2022_did |> 
+  filter(s_sigma_term_bs >= 0 & s_sigma_term_bs < 496)
+did1 <- lm(sigma_term_bs ~ time*gelection + sector, data = riskinfo_2022_did)
+did2 <- lm(sigma_term_bs ~ time*tight + sector, data = riskinfo_2022_did)
+did3 <- lm(sigma_term_bs ~ time*margin1 + sector, data = riskinfo_2022_did)
+did4 <- lm(sigma_term_bs ~ time*margin2 + sector, data = riskinfo_2022_did)
+did5 <- lm(sigma_term_bs ~ time*tight_c + sector, data = riskinfo_2022_did)
+did6 <- lm(sigma_term_bs ~ time*margin1_c + sector, data = riskinfo_2022_did)
+did7 <- lm(sigma_term_bs ~ time*margin2_c + sector, data = riskinfo_2022_did)
+did8 <- lm(sigma_term_bs ~ time*closeness + sector, data = riskinfo_2022_did)
+did9 <- lm(sigma_term_bs ~ time*margin + sector, data = riskinfo_2022_did)
+
+se_did1 <- sqrt(diag(vcovCL(did1, cluster = riskinfo_2022_did$state)))
+se_did2 <- sqrt(diag(vcovCL(did2, cluster = riskinfo_2022_did$state)))
+se_did3 <- sqrt(diag(vcovCL(did3, cluster = riskinfo_2022_did$state)))
+se_did4 <- sqrt(diag(vcovCL(did4, cluster = riskinfo_2022_did$state)))
+se_did5 <- sqrt(diag(vcovCL(did5, cluster = riskinfo_2022_did$state)))
+se_did6 <- sqrt(diag(vcovCL(did6, cluster = riskinfo_2022_did$state)))
+se_did7 <- sqrt(diag(vcovCL(did7, cluster = riskinfo_2022_did$state)))
+se_did8 <- sqrt(diag(vcovCL(did8, cluster = riskinfo_2022_did$state)))
+se_did9 <- sqrt(diag(vcovCL(did9, cluster = riskinfo_2022_did$state)))
+
+results <- data.frame(
+  Model = factor(c('Election', '0% Margin (Full)', '1% Margin (Full)', '2% Margin (Full)',
+            '0% Margin (Last)', '1% Margin (Last)', '2% Margin (Last)', 'Negative Exponent', 'Multiplicative Inverse'),
+            levels = c('Election', '0% Margin (Full)', '1% Margin (Full)', '2% Margin (Full)',
+            '0% Margin (Last)', '1% Margin (Last)', '2% Margin (Last)', 'Negative Exponent', 'Multiplicative Inverse')),
+  Coefficient = c(
+    coef(did1)["time:gelection"], coef(did2)["time:tight"], coef(did3)["time:margin1"],
+    coef(did4)["time:margin2"], coef(did5)["time:tight_c"], coef(did6)["time:margin1_c"],
+    coef(did7)["time:margin2_c"], coef(did8)["time:closeness"], coef(did9)["time:margin"]
+  ),
+  SE = c(se_did1["time:gelection"], se_did2["time:tight"], se_did3["time:margin1"],
+         se_did4["time:margin2"], se_did5["time:tight_c"], se_did6["time:margin1_c"],
+         se_did7["time:margin2_c"], se_did8["time:closeness"], se_did9["time:margin"])
+)
+
+results$LCI <- results$Coefficient - 1.96*results$SE
+results$UCI <- results$Coefficient + 1.96*results$SE
+
+
+# Use stargazer to report models with custom standard errors
+stargazer(did1, did2, did3, did4, did5, did6, did7, did8, did9,
+          se = list(se_did1, se_did2, se_did3, se_did4, se_did5, se_did6, se_did7, se_did8, se_did9))
+```
+
+```{r}
+riskinfo_20200 <- riskinfo_2020 |>
+  dplyr::select(-c(sigma_term_bs1, baseline1, s_sigma_term_bs1)) |> 
+  rename(baseline = baseline0,
+         s_sigma_term_bs = s_sigma_term_bs0) |> 
+  mutate(time = 1)
+riskinfo_20201 <- riskinfo_2020 |> 
+  dplyr::select(-c(sigma_term_bs, baseline0, s_sigma_term_bs0)) |> 
+  rename(sigma_term_bs = sigma_term_bs1,
+         baseline = baseline1,
+         s_sigma_term_bs = s_sigma_term_bs1) |> 
+  mutate(time = 0)
+riskinfo_2020_did <- rbind(riskinfo_20200, riskinfo_20201)
+riskinfo_2020_did <- riskinfo_2020_did |> 
+  filter(s_sigma_term_bs >= 0 & s_sigma_term_bs < 179)
+did1 <- lm(sigma_term_bs*10000 ~ time*margin1 + sector, data = riskinfo_2020_did)
+coeftest(did1, vcov. = vcovCL(did1, cluster = riskinfo_2020_did$state))
+did2 <- lm(s_sigma_term_bs ~ time*tight + sector, data = riskinfo_2020_did)
+coeftest(did2, vcov. = vcovCL(did2, cluster = riskinfo_2020_did$state))
+stargazer(did1, did2)
+
+
+did3 <- lm(sigma_term_bs ~ time*gelection + sector, data = riskinfo_2020_did)
+coeftest(did3, vcov. = vcovCL(did3, cluster = riskinfo_2020_did$state))
+did4 <- lm(s_sigma_term_bs ~ time*gelection + sector, data = riskinfo_2020_did)
+coeftest(did4, vcov. = vcovCL(did4, cluster = riskinfo_2020_did$state))
+did5 <- lm(baseline ~ time * tight + sector, data = riskinfo_2020_did)
+coeftest(did5, vcov. = vcovCL(did5, cluster = riskinfo_2020_did$state))
+did6 <- lm(baseline ~ time * gelection + sector, data = riskinfo_2020_did)
+coeftest(did6, vcov. = vcovCL(did6, cluster = riskinfo_2020_did$state))
+```
+
+```{r}
+riskinfo_did <- rbind(riskinfo_2020_did, riskinfo_2022_did)
+
+did1 <- lm(sigma_term_bs ~ time*gelection + as.factor(year) + sector, data = riskinfo_did)
+coeftest(did1, vcov. = vcovCL(did1, cluster = riskinfo_did$state))
+did2 <- lm(sigma_term_bs ~ time*tight + as.factor(year) + sector, data = riskinfo_did)
+coeftest(did2, vcov. = vcovCL(did2, cluster = riskinfo_did$state))
+did3 <- lm(sigma_term_bs ~ time*margin1 + as.factor(year) + sector, data = riskinfo_did)
+coeftest(did3, vcov. = vcovCL(did3, cluster = riskinfo_did$state))
+did4 <- lm(sigma_term_bs ~ time*margin2 + as.factor(year) + sector, data = riskinfo_did)
+coeftest(did4, vcov. = vcovCL(did4, cluster = riskinfo_did$state))
+did5 <- lm(sigma_term_bs ~ time*tight_c + as.factor(year) + sector, data = riskinfo_did)
+coeftest(did5, vcov. = vcovCL(did5, cluster = riskinfo_did$state))
+did6 <- lm(sigma_term_bs ~ time*margin1_c + as.factor(year) + sector, data = riskinfo_did)
+coeftest(did6, vcov. = vcovCL(did6, cluster = riskinfo_did$state))
+did7 <- lm(sigma_term_bs ~ time*margin2_c + as.factor(year) + sector, data = riskinfo_did)
+coeftest(did7, vcov. = vcovCL(did7, cluster = riskinfo_did$state))
+did8 <- lm(sigma_term_bs ~ time*closeness + as.factor(year) + sector, data = riskinfo_did)
+coeftest(did8, vcov. = vcovCL(did8, cluster = riskinfo_did$state))
+did9 <- lm(sigma_term_bs ~ time*margin + as.factor(year) + sector, data = riskinfo_did)
+coeftest(did9, vcov. = vcovCL(did9, cluster = riskinfo_did$state))
+
+se_did1 <- sqrt(diag(vcovCL(did1, cluster = riskinfo_did$state)))
+se_did2 <- sqrt(diag(vcovCL(did2, cluster = riskinfo_did$state)))
+se_did3 <- sqrt(diag(vcovCL(did3, cluster = riskinfo_did$state)))
+se_did4 <- sqrt(diag(vcovCL(did4, cluster = riskinfo_did$state)))
+se_did5 <- sqrt(diag(vcovCL(did5, cluster = riskinfo_did$state)))
+se_did6 <- sqrt(diag(vcovCL(did6, cluster = riskinfo_did$state)))
+se_did7 <- sqrt(diag(vcovCL(did7, cluster = riskinfo_did$state)))
+se_did8 <- sqrt(diag(vcovCL(did8, cluster = riskinfo_did$state)))
+se_did9 <- sqrt(diag(vcovCL(did9, cluster = riskinfo_did$state)))
+
+results <- data.frame(
+  Model = factor(c('Election', '0% Margin (Full)', '1% Margin (Full)', '2% Margin (Full)',
+            '0% Margin (Last)', '1% Margin (Last)', '2% Margin (Last)', 'Negative Exponent', 'Multiplicative Inverse'),
+            levels = c('Election', '0% Margin (Full)', '1% Margin (Full)', '2% Margin (Full)',
+            '0% Margin (Last)', '1% Margin (Last)', '2% Margin (Last)', 'Negative Exponent', 'Multiplicative Inverse')),
+  Coefficient = c(
+    coef(did1)["time:gelection"], coef(did2)["time:tight"], coef(did3)["time:margin1"],
+    coef(did4)["time:margin2"], coef(did5)["time:tight_c"], coef(did6)["time:margin1_c"],
+    coef(did7)["time:margin2_c"], coef(did8)["time:closeness"], coef(did9)["time:margin"]
+  ),
+  SE = c(se_did1["time:gelection"], se_did2["time:tight"], se_did3["time:margin1"],
+         se_did4["time:margin2"], se_did5["time:tight_c"], se_did6["time:margin1_c"],
+         se_did7["time:margin2_c"], se_did8["time:closeness"], se_did9["time:margin"])
+)
+
+results$LCI <- results$Coefficient - 1.96*results$SE
+results$UCI <- results$Coefficient + 1.96*results$SE
+
+
+# Plotting
+ggplot(results, aes(y = Model, x = Coefficient)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = Coefficient - 1.96*SE, xmax = Coefficient + 1.96*SE), height = 0.2) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") + # Adding vertical line at 0
+  theme_classic() +
+  labs(title = "DiD Estimator for Relative Jump Variance (Full Sample)",
+       y = "Model",
+       x = "Coefficient") +
+  theme(text = element_text(family = "serif", color = "black"),
+        axis.text.y = element_text(hjust = 1))
+
+# Use stargazer to report models with custom standard errors
+stargazer(did1, did2, did3, did4, did5, did6, did7, did8, did9,
+          se = list(se_did1, se_did2, se_did3, se_did4, se_did5, se_did6, se_did7, se_did8, se_did9))
+```
